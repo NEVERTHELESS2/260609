@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>타겟별 CRM 워크플로우 마스터 빌더</title>
+    <style>
+        :root {
+            --color-sys: #f0f0f0;
+            --color-msg: #e6f7ed;
+            --color-cond: #fff3cd;
+            --color-up: #f3e5f5;
+            --color-err: #fde8e8;
+            --color-border: #dcdcdc;
+        }
+
+        body {
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 140px 20px 40px 20px; /* 상단 고정 바 공간 확보 */
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* 🛠️ 상단 고정 컨트롤 툴바 */
+        .header-fixed {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #2c3e50;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+        }
+        .toolbar {
+            height: 55px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 30px;
+            border-bottom: 1px solid #34495e;
+            color: #fff;
+        }
+        .toolbar-title { font-size: 15px; font-weight: bold; }
+        .btn-group { display: flex; gap: 8px; }
+        .toolbar-btn {
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 11px;
+            transition: 0.2s;
+        }
+        .btn-add-linear { background: #3498db; }
+        .btn-add-linear:hover { background: #2980b9; }
+        .btn-add-branch { background: #f39c12; }
+        .btn-add-branch:hover { background: #d35400; }
+        .btn-save { background: #2ecc71; }
+        .btn-save:hover { background: #27ae60; }
+
+        /* 📑 타겟군 스위칭 탭 */
+        .tab-bar {
+            display: flex;
+            background: #34495e;
+            padding: 0 20px;
+            gap: 5px;
+        }
+        .tab-btn {
+            background: none;
+            border: none;
+            color: #bdc3c7;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            border-bottom: 3px solid transparent;
+            transition: 0.2s;
+        }
+        .tab-btn:hover { color: #fff; }
+        .tab-btn.active {
+            color: #fff;
+            border-bottom: 3px solid #2ecc71;
+            background: rgba(255,255,255,0.05);
+        }
+
+        /* 상단 범례 */
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 25px;
+            padding: 10px 20px;
+            background: #fff;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .dot { width: 14px; height: 14px; border-radius: 4px; }
+
+        /* 📦 워크플로우 래퍼 및 컨테이너 */
+        .flow-container {
+            display: none; /* 기본 숨김 */
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 800px;
+        }
+        .flow-container.active {
+            display: flex; /* 활성화된 탭만 노출 */
+        }
+
+        .flow-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            width: 100%;
+        }
+
+        /* 📝 카드 디자인 */
+        .node {
+            width: 360px;
+            padding: 18px;
+            margin: 10px 0;
+            border-radius: 20px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.05);
+            text-align: center;
+            border: 2px dashed transparent;
+            position: relative;
+            box-sizing: border-box;
+            background-color: var(--color-sys);
+            transition: all 0.2s;
+        }
+        .node:hover {
+            border-color: #3498db;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+        }
+
+        /* 컨트롤 버튼 세트 */
+        .node-controls {
+            position: absolute;
+            left: 50%;
+            top: -15px;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 5px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+        .flow-item:hover .node-controls { opacity: 1; }
+        .ctrl-btn {
+            border: none;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .btn-up { background: #34495e; }
+        .btn-down { background: #34495e; }
+        .btn-del { background: #e74c3c; }
+
+        [contenteditable="true"] { outline: none; padding: 2px; border-radius: 4px; }
+        [contenteditable="true"]:hover { background: rgba(0,0,0,0.04); }
+        [contenteditable="true"]:focus { background: #fff; box-shadow: 0 0 0 2px #3498db; color: #000; }
+
+        .node-title { font-weight: bold; font-size: 15px; margin-bottom: 6px; }
+        .node-desc { font-size: 12px; color: #444; line-height: 1.5; margin-top: 4px; }
+        
+        .badge {
+            display: inline-block;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            background: rgba(0,0,0,0.08);
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .type-selector {
+            margin-top: 10px;
+            font-size: 11px;
+            padding: 2px 5px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background: #fff;
+        }
+
+        /* 색상 클래스 */
+        .node.sys { background-color: var(--color-sys); color: #333; }
+        .node.msg { background-color: var(--color-msg); color: #1e7e34; }
+        .node.cond { background-color: var(--color-cond); color: #856404; }
+        .node.up { background-color: var(--color-up); color: #6a1b9a; }
+        .node.err { background-color: var(--color-err); color: #9b1c1c; }
+
+        .day-tag {
+            position: absolute;
+            right: 30px;
+            top: 30px;
+            font-size: 11px;
+            font-weight: bold;
+            color: #7f8c8d;
+            background: rgba(0,0,0,0.04);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        /* 화살표 */
+        .line {
+            width: 2px;
+            height: 30px;
+            background-color: #b0bec5;
+            position: relative;
+        }
+        .line::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: -4px;
+            width: 0; height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 6px solid #b0bec5;
+        }
+        .flow-item:last-child .line { display: none; }
+
+        /* 분기 구조 레이아웃 */
+        .branch-container {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            gap: 35px;
+            margin: 10px 0;
+        }
+        .branch-path {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        .path-label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-fixed">
+        <div class="toolbar">
+            <div class="toolbar-title">🚀 AI 교육기획 타겟별 CRM 시나리오 마스터 대시보드</div>
+            <div class="btn-group">
+                <button class="toolbar-btn btn-add-linear" onclick="addLinearNode()">➕ 일반 단계 추가</button>
+                <button class="toolbar-btn btn-add-branch" onclick="addBranchNode()">🔀 분기 구조 추가</button>
+                <button class="toolbar-btn btn-save" onclick="downloadHTML()">💾 설계판 통합 다운로드</button>
+            </div>
+        </div>
+        <div class="tab-bar">
+            <button class="tab-btn active" id="tabBtn1" onclick="switchTab(1)">1. 커리어 업그레이드형 (인사총무)</button>
+            <button class="tab-btn" id="tabBtn2" onclick="switchTab(2)">2. 직무 피벗형 (이러닝센터)</button>
+            <button class="tab-btn" id="tabBtn3" onclick="switchTab(3)">3. 생존형 취준생 (쌩비전공)</button>
+            <button class="tab-btn" id="tabBtn4" onclick="switchTab(4)">4. 지식 창업형 (강사)</button>
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><div class="dot" style="background: var(--color-sys)"></div>시스템 감지</div>
+        <div class="legend-item"><div class="dot" style="background: var(--color-msg)"></div>메시지 발송</div>
+        <div class="legend-item"><div class="dot" style="background: var(--color-cond)"></div>조건 분기</div>
+        <div class="legend-item"><div class="dot" style="background: var(--color-up)"></div>업셀 전환</div>
+        <div class="legend-item"><div class="dot" style="background: var(--color-err)"></div>이탈 방지 / 넛지</div>
+    </div>
+
+    <div class="flow-container active" id="flowContainer1">
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node sys">
+                <div class="node-title" contenteditable="true" spellcheck="false">결제 완료</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">자동화 플로우 시작 (인사총무/운영 타겟 태그 부여)</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D0</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys" selected>시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node msg">
+                <span class="badge" contenteditable="true" spellcheck="false">이메일</span>
+                <div class="node-title" contenteditable="true" spellcheck="false">[선공개 특전] 기획서 표준 양식 전달</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">대기업 교육체계 수립 장표 및 요구분석서 양식 발송으로 선행 기대감 유도</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+1</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg" selected>메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node cond">
+                <div class="node-title" contenteditable="true" spellcheck="false">2주차 요구분석 과제 제출 여부</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">현업 병행으로 제출 지연 리스크 방어</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+7</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond" selected>조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="branch-container">
+                <div class="branch-path">
+                    <span class="path-label" contenteditable="true" spellcheck="false">NO</span>
+                    <div class="node err">
+                        <div class="node-title" contenteditable="true" spellcheck="false">[미수강 넛지] 야근 대응 AI 꼼수</div>
+                        <div class="node-desc" contenteditable="true" spellcheck="false">"업무에 바쁜 담당자님을 위한 AI 요구분석 초안 30분 완성법" 공유로 복귀 유도</div>
+                        <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err" selected>이탈</option></select>
+                    </div>
+                </div>
+                <div class="branch-path">
+                    <span class="path-label" contenteditable="true" spellcheck="false">YES</span>
+                    <div class="node msg">
+                        <div class="node-title" contenteditable="true" spellcheck="false">[진도 독려] 1:1 강사 첨삭 안내</div>
+                        <div class="node-desc" contenteditable="true" spellcheck="false">"강사님의 피드백이 도착했습니다. 기획서 와꾸가 잡히네요!" 효능감 강조</div>
+                        <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg" selected>메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+                    </div>
+                </div>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node sys">
+                <div class="node-title" contenteditable="true" spellcheck="false">수료 감지 및 이직 매뉴얼 오픈</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">대기업 HRD 기획 직무 이직 시 최종 포트폴리오 활용법 가이드 발송</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">수료일</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys" selected>시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node up">
+                <span class="badge" contenteditable="true" spellcheck="false">이메일 한정</span>
+                <div class="node-title" contenteditable="true" spellcheck="false">중급 연계 과정 업셀</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">"B2B 제안서 수주 및 HRD 성과측정(ROI) 마스터클래스" 30% 마감 특별 할인 제안</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+14</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up" selected>업셀</option><option value="err">이탈</option></select>
+            </div>
+        </div>
+    </div>
+
+    <div class="flow-container" id="flowContainer2">
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node sys">
+                <div class="node-title" contenteditable="true" spellcheck="false">결제 완료</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">자동화 플로우 시작 (이러닝센터 운영/CS 타겟 태그 부여)</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D0</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys" selected>시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node msg">
+                <span class="badge" contenteditable="true" spellcheck="false">카카오톡</span>
+                <div class="node-title" contenteditable="true" spellcheck="false">[안심 메시지] "업계를 아는 당신이 치트키"</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">비선공자 선배 기획자의 스토리보드 Before/After 실물 공개로 자신감 고취</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+2</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg" selected>메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node cond">
+                <div class="node-title" contenteditable="true" spellcheck="false">3주차 교수설계 진도율 체크</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">초반 거시 이론 파트에서 지루함을 느껴 이탈하는 경우 방어</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+10</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond" selected>조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="branch-container">
+                <div class="branch-path">
+                    <span class="path-label" contenteditable="true" spellcheck="false">30% 미만</span>
+                    <div class="node err">
+                        <div class="node-title" contenteditable="true" spellcheck="false">[이탈 장벽 해소] "이론은 가볍게 스킵!"</div>
+                        <div class="node-desc" contenteditable="true" spellcheck="false">"1-2주차 역사나 이론은 넘기셔도 좋습니다. 본체인 3주차 실무로 바로 오세요" 타겟팅 안내</div>
+                        <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err" selected>이탈</option></select>
+                    </div>
+                </div>
+                <div class="branch-path">
+                    <span class="path-label" contenteditable="true" spellcheck="false">30% 이상</span>
+                    <div class="node msg">
+                        <div class="node-title" contenteditable="true" spellcheck="false">[정상 진도] 스토리보드 템플릿 예고</div>
+                        <div class="node-desc" contenteditable="true" spellcheck="false">"다음 단계는 드디어 대본 및 화면 설계 실습입니다!" 기대 효과 자극</div>
+                        <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg" selected>메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+                    </div>
+                </div>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node sys">
+                <div class="node-title" contenteditable="true" spellcheck="false">수료 감지 및 이력서 패키징 매뉴얼</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">이러닝 에이전시 교수설계자(ID) 맞춤형 포트폴리오 패키징 기법 배포</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">수료일</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys" selected>시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node up">
+                <span class="badge" contenteditable="true" spellcheck="false">실무 컨설팅</span>
+                <div class="node-title" contenteditable="true" spellcheck="false">1:1 대면 첨삭권 프리미엄 업셀</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">"현업 이러닝 기획사 대표의 1:1 취업 포트폴리오 최종 정밀 검수 대면 세션" 선착순 판매</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+14</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up" selected>업셀</option><option value="err">이탈</option></select>
+            </div>
+        </div>
+    </div>
+
+    <div class="flow-container" id="flowContainer3">
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node sys">
+                <div class="node-title" contenteditable="true" spellcheck="false">결제 완료</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">자동화 플로우 시작 (쌩비전공/취준 타겟 태그 부여)</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D0</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys" selected>시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node msg">
+                <span class="badge" contenteditable="true" spellcheck="false">카카오톡</span>
+                <div class="node-title" contenteditable="true" spellcheck="false">[밀착 케어] 전담 페이스메이커 배정 안내</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">"혼자가 아닙니다" 독려 문구 및 완강 선배들의 학습 주기 루틴 3가지 전송</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+2</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg" selected>메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node cond">
+                <div class="node-title" contenteditable="true" spellcheck="false">마의 7주차 (스토리보드 헤비구간) 미접속 감지</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">과제 부담으로 인한 중도 탈락 리스크 최고조 시점</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+45</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond" selected>조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="branch-container">
+                <div class="branch-path">
+                    <span class="path-label" contenteditable="true" spellcheck="false">3일 이상 미접속</span>
+                    <div class="node err">
+                        <div class="node-title" contenteditable="true" spellcheck="false">[긴급 심폐소생] "빈 칸 제출도 환영!"</div>
+                        <div class="node-desc" contenteditable="true" spellcheck="false">"완벽하지 않아도 좋습니다. 국비지원 자비 부담금 환급 조건 리마인드, 일단 제출하세요!" 멘탈 케어</div>
+                        <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err" selected>이탈</option></select>
+                    </div>
+                </div>
+                <div class="branch-path">
+                    <span class="path-label" contenteditable="true" spellcheck="false">정상 접속 중</span>
+                    <div class="node msg">
+                        <div class="node-title" contenteditable="true" spellcheck="false">[사기 충전] 최종 결과물 패키지 예고</div>
+                        <div class="node-desc" contenteditable="true" spellcheck="false">"고지가 눈앞입니다. 다음 주면 이력서에 넣을 메인 5종 패키지가 완료됩니다!"</div>
+                        <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg" selected>메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+                    </div>
+                </div>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node sys">
+                <div class="node-title" contenteditable="true" spellcheck="false">수료 감지 및 취업 패키지 즉시 다운로드</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">메인 5종 + 플러스 2종 취업 포트폴리오 최종 통합본 다운로드 링크 메일링</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">수료일</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys" selected>시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node up">
+                <span class="badge" contenteditable="true" spellcheck="false">취업 올인</span>
+                <div class="node-title" contenteditable="true" spellcheck="false">서류 통과 보장 자소서 첨삭 업셀</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">"이러닝/HRD 전문 헤드헌터 매칭 연계 및 합격 자소서 밀착 첨삭 케어 프로그램" 안내</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+14</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up" selected>업셀</option><option value="err">이탈</option></select>
+            </div>
+        </div>
+    </div>
+
+    <div class="flow-container" id="flowContainer4">
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node sys">
+                <div class="node-title" contenteditable="true" spellcheck="false">결제 완료</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">자동화 플로우 시작 (프리랜서/오프라인 강사 타겟 태그 부여)</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D0</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys" selected>시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node msg">
+                <span class="badge" contenteditable="true" spellcheck="false">카카오톡</span>
+                <div class="node-title" contenteditable="true" spellcheck="false">[목적 리마인드] "몸으로 뛰는 강의는 끝"</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">"취업 학원이 아닙니다. 강사님의 내 지식을 무한 복제하는 디지털 상품 제작 과정입니다" 메시지 빌딩</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+2</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg" selected>메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node cond">
+                <div class="node-title" contenteditable="true" spellcheck="false">3주차 교수설계서(사업 제안 양식) 다운로드 여부</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">정부지원사업 공모 및 B2B 출강 제안 핵심 자산 활용 유무 측정</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+14</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond" selected>조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="branch-container">
+                <div class="branch-path">
+                    <span class="path-label" contenteditable="true" spellcheck="false">미다운로드</span>
+                    <div class="node err">
+                        <div class="node-title" contenteditable="true" spellcheck="false">[자산 리마인드] "제안서 단가 올리기"</div>
+                        <div class="node-desc" contenteditable="true" spellcheck="false">"단순 강의 계획서 말고 기업 B2B 연수용 표준 교수설계 양식입니다. 이것만 챙겨도 본전 뽑습니다." 넛지</div>
+                        <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err" selected>이탈</option></select>
+                    </div>
+                </div>
+                <div class="branch-path">
+                    <span class="path-label" contenteditable="true" spellcheck="false">다운로드 완료</span>
+                    <div class="node msg">
+                        <div class="node-title" contenteditable="true" spellcheck="false">[응원] 내 강의 이러닝화 시각화 단계</div>
+                        <div class="node-desc" contenteditable="true" spellcheck="false">"내 지식을 완전 자동화 상품으로 패키징하는 스토리보드 단계로 진입하세요!"</div>
+                        <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg" selected>메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+                    </div>
+                </div>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node sys">
+                <div class="node-title" contenteditable="true" spellcheck="false">수료 감지 및 특허/창업 특전 발송</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">"내 지식콘텐츠 저작권 확보 및 B2B 지식 창업가 1인 기업 독립 매뉴얼" 부록 전송</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">수료일</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys" selected>시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+            </div>
+            <div class="line"></div>
+        </div>
+        <div class="flow-item">
+            <div class="node-controls"><button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button><button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button><button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button></div>
+            <div class="node up">
+                <span class="badge" contenteditable="true" spellcheck="false">인프라 구축</span>
+                <div class="node-title" contenteditable="true" spellcheck="false">나만의 독자 연수원(LMS) 구축 컨설팅</div>
+                <div class="node-desc" contenteditable="true" spellcheck="false">"외주 주지 않고 내 독립 도메인 이러닝 사이트 및 마케팅 자동화 인프라를 구축해 드리는 고가 1:1 마스터 컨설팅" 제안</div>
+                <div class="day-tag" contenteditable="true" spellcheck="false">D+14</div>
+                <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up" selected>업셀</option><option value="err">이탈</option></select>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentActiveTab = 1;
+
+        // 1. 타겟군 스위칭 탭 제어 함수
+        function switchTab(tabIndex) {
+            currentActiveTab = tabIndex;
+            
+            // 모든 버튼 및 컨테이너 비활성화
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.flow-container').forEach(cont => cont.classList.remove('active'));
+            
+            // 선택한 탭 활성화
+            document.getElementById('tabBtn' + tabIndex).classList.add('active');
+            document.getElementById('flowContainer' + tabIndex).classList.add('active');
+        }
+
+        // 2. 드롭다운 선택 시 실시간 색상 클래스 변경 연동
+        function changeType(selectElement) {
+            const node = selectElement.closest('.node');
+            node.classList.remove('sys', 'msg', 'cond', 'up', 'err');
+            
+            const newType = selectElement.value;
+            node.classList.add(newType);
+            
+            const options = selectElement.querySelectorAll('option');
+            options.forEach(opt => {
+                if(opt.value === newType) opt.setAttribute('selected', 'selected');
+                else opt.removeAttribute('selected');
+            });
+        }
+
+        // 3. [위로 이동 ▲]
+        function moveUp(btn) {
+            const currentItem = btn.closest('.flow-item');
+            const prevItem = currentItem.previousElementSibling;
+            if (prevItem) {
+                currentItem.parentNode.insertBefore(currentItem, prevItem);
+            }
+        }
+
+        // 4. [아래로 이동 ▼]
+        function moveDown(btn) {
+            const currentItem = btn.closest('.flow-item');
+            const nextItem = currentItem.nextElementSibling;
+            if (nextItem) {
+                currentItem.parentNode.insertBefore(nextItem, currentItem);
+            }
+        }
+
+        // 5. [삭제 ❌]
+        function deleteItem(btn) {
+            if(confirm("이 단계를 워크플로우에서 삭제하시겠습니까?")) {
+                btn.closest('.flow-item').remove();
+            }
+        }
+
+        // 6. 현재 활성화된 탭에 [일반 노드 추가]
+        function addLinearNode() {
+            const container = document.getElementById('flowContainer' + currentActiveTab);
+            const newItem = document.createElement('div');
+            newItem.className = 'flow-item';
+            newItem.innerHTML = `
+                <div class="node-controls">
+                    <button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button>
+                    <button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button>
+                    <button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button>
+                </div>
+                <div class="node sys">
+                    <span class="badge" contenteditable="true" spellcheck="false">채널명</span>
+                    <div class="node-title" contenteditable="true" spellcheck="false">새로운 자동화 타이틀</div>
+                    <div class="node-desc" contenteditable="true" spellcheck="false">내용을 자유롭게 수정하세요.</div>
+                    <div class="day-tag" contenteditable="true" spellcheck="false">D+일정</div>
+                    <select class="type-selector" onchange="changeType(this)"><option value="sys" selected>시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+                </div>
+                <div class="line"></div>
+            `;
+            container.appendChild(newItem);
+        }
+
+        // 7. 현재 활성화된 탭에 [분기 노드 추가]
+        function addBranchNode() {
+            const container = document.getElementById('flowContainer' + currentActiveTab);
+            const newItem = document.createElement('div');
+            newItem.className = 'flow-item';
+            newItem.innerHTML = `
+                <div class="node-controls">
+                    <button class="ctrl-btn btn-up" onclick="moveUp(this)">▲</button>
+                    <button class="ctrl-btn btn-down" onclick="moveDown(this)">▼</button>
+                    <button class="ctrl-btn btn-del" onclick="deleteItem(this)">❌</button>
+                </div>
+                <div class="branch-container">
+                    <div class="branch-path">
+                        <span class="path-label" contenteditable="true" spellcheck="false">조건 A</span>
+                        <div class="node err">
+                            <div class="node-title" contenteditable="true" spellcheck="false">A 분기 액션 문서</div>
+                            <div class="node-desc" contenteditable="true" spellcheck="false">내용 수정</div>
+                            <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg">메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err" selected>이탈</option></select>
+                        </div>
+                    </div>
+                    <div class="branch-path">
+                        <span class="path-label" contenteditable="true" spellcheck="false">조건 B</span>
+                        <div class="node msg">
+                            <div class="node-title" contenteditable="true" spellcheck="false">B 분기 액션 문서</div>
+                            <div class="node-desc" contenteditable="true" spellcheck="false">내용 수정</div>
+                            <select class="type-selector" onchange="changeType(this)"><option value="sys">시스템</option><option value="msg" selected>메시지</option><option value="cond">조건</option><option value="up">업셀</option><option value="err">이탈</option></select>
+                        </div>
+                    </div>
+                </div>
+                <div class="line"></div>
+            `;
+            container.appendChild(newItem);
+        }
+
+        // 8. 4대 타겟군 수정 현황 통합 다운로드
+        function downloadHTML() {
+            let currentHTML = "<!DOCTYPE html>\n<html lang=\"ko\">\n" + document.documentElement.innerHTML + "\n</html>";
+            const blob = new Blob([currentHTML], { type: "text/html;charset=utf-8" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "crm_multi_target_master.html";
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
